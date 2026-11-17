@@ -6,8 +6,8 @@ const destination = resolve(process.env.MAKEFUN_OUTPUT_DIR || '/output');
 mkdirSync(destination, { recursive: true });
 
 for (const directory of ['app', 'screenshots']) {
-  const source = new URL('./' + directory + '/', import.meta.url);
-  cpSync(source, join(destination, directory), { recursive: true });
+  const sourceDirectory = new URL('./' + directory + '/', import.meta.url);
+  cpSync(sourceDirectory, join(destination, directory), { recursive: true });
 }
 
 const dossier = buildDossier(destination, {
