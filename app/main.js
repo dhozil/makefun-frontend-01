@@ -11,7 +11,10 @@ async function get(path) {
   let saved = memory.get(path);
   if (!saved) { try { saved = JSON.parse(sessionStorage.getItem(path)); } catch {} }
   const response = await fetch(host + path,{headers:saved?.etag ? {'If-None-Match':saved.etag} : {}});
-  if (response.status === 304 && saved) return saved.data;
+  if (response.status === 304 && saved) {
+    memory.set(path, saved);
+    return saved.data;
+  }
   if (!response.ok) throw new Error(`Arena request failed (${response.status})`);
   const data = await response.json();
   saved = {data,etag:response.headers.get('ETag')};
@@ -39,12 +42,12 @@ async function board() {
 async function brief(slug) {
   const c = await get('/api/competitions/'+encodeURIComponent(slug));
   const rewards = c.rewardsNow || Object.entries(c.rewards || {}).map(([place,amountUsd])=>({place,amountUsd}));
-  return `<a href="#/">← Arena</a><p class="label">${e(c.status || (new Date(c.deadline)>Date.now()?'Open':'Closed'))}</p><h1>${e(c.title)}</h1><strong class="pot">${dollars(c.potUsd ?? c.rewardAmount)} <small>live pot</small></strong><p>${fee(c.entryFeeUsd)} · ${e(c.submissionCount ?? 0)} entries</p><p class="description">${e(c.description)}</p><h2>Dates</h2><p>Starts: ${e(when(c.startsAt || c.createdAt))}<br>Deadline: ${e(when(c.deadline))}</p><h2>Rewards</h2><table><thead><tr><th>Place</th><th>Amount</th></tr></thead><tbody>${rewards.map(r=>`<tr><td>${e(r.place)}</td><td>${dollars(r.amountUsd)}</td></tr>`).join('') || '<tr><td colspan="2">Rewards pending</td></tr>'}</tbody></table><p><a class="button" href="#/bounty/${encodeURIComponent(slug)}/leaderboard">View leaderboard →</a></p>`;
+  return `<a href="#/">← Arena</a><p class="label">${e(c.status || (new Date(c.deadline)>Date.now()?'Open':'Closed'))}</p><h1>${e(c.title)}</h1><strong class="pot">${dollars(c.potUsd ?? c.rewardAmount)} <small>live pot</small></strong><p>${fee(c.entryFeeUsd)} · ${e(c.submissionCount ?? 0)} entries</p><p class="description">${e(c.description)}</p><h2>Dates</h2><p>Starts: ${e(when(c.startsAt || c.publishedAt || c.createdAt))}<br>Deadline: ${e(when(c.deadline))}</p><h2>Rewards</h2><table><thead><tr><th>Place</th><th>Amount</th></tr></thead><tbody>${rewards.map(r=>`<tr><td>${e(r.place)}</td><td>${dollars(r.amountUsd)}</td></tr>`).join('') || '<tr><td colspan="2">Rewards pending</td></tr>'}</tbody></table><p><a class="button" href="#/bounty/${encodeURIComponent(slug)}/leaderboard">View leaderboard →</a></p>`;
 }
 async function ranking(slug) {
   const data = await get('/api/competitions/'+encodeURIComponent(slug)+'/leaderboard');
   const rows = (data.entries || []).map(r=>{
-    const value = key => r.display?.[key] ?? r.values?.[key];
+    const value = key => r.display?.[key] ?? r.values?.[key] ?? r[key];
     const score = (key,digits) => value(key)==null ? '—' : (Number(value(key))/1e6).toFixed(digits);
     return `<tr><td>${e(r.rank ?? '—')}</td><td><div class="person">${portrait(r.image)}<a href="#/profile/${encodeURIComponent(r.handle)}">${e(r.handle)}</a></div></td><td>${e(r.title)}</td><td>${score('judge',4)}</td><td>${score('judge_low',2)} – ${score('judge_high',2)}</td><td>${String(value('valid'))==='1'?'✓':'—'}</td><td>${size(value('bytes'))}</td></tr>`;
   });
@@ -52,7 +55,7 @@ async function ranking(slug) {
 }
 async function profile(handle) {
   const p = await get('/api/profiles/'+encodeURIComponent(handle));
-  return `<p class="label">COMPETITOR</p>${portrait(p.image)}<h1>${e(p.display_name || p.handle)}</h1><p>@${e(p.handle)}</p><p class="description">${e(p.bio)}</p><div class="grid"><article class="card"><h2>${e(p.record?.competitions_entered ?? 0)}</h2><p>Competitions entered</p></article><article class="card"><strong class="pot">${dollars(p.record?.prize_usd)}</strong><p>Prize earnings</p></article></div>`;
+  return `<p class="label">COMPETITOR</p>${portrait(p.picture || p.image)}<h1>${e(p.display_name || p.handle)}</h1><p>@${e(p.handle)}</p><p class="description">${e(p.bio)}</p><div class="grid"><article class="card"><h2>${e(p.record?.competitions_entered ?? 0)}</h2><p>Competitions entered</p></article><article class="card"><strong class="pot">${dollars(p.record?.prize_usd)}</strong><p>Prize earnings</p></article></div>`;
 }
 async function navigate() {
   const turn = ++generation;
@@ -68,6 +71,7 @@ async function navigate() {
     if (turn !== generation) return;
     frame(`<div role="alert"><h1>Arena unavailable</h1><p>${e(error.message)}</p><button id="retry">Try again</button></div>`);
     document.querySelector('#retry').onclick = navigate;
+    window.__shotReady = true;
   }
 }
 addEventListener('hashchange',navigate);
